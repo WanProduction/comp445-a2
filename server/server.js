@@ -5,7 +5,7 @@ const fs = require("fs");
 const ffmpeg = require('fluent-ffmpeg');
 const io = require('socket.io')(server, {
   cors: {
-    origin: "http://localhost",
+    origin: "http://132.205.229.92",
     methods: ["GET", "POST"]
   }
 })
