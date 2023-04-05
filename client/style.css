@@ -1,0 +1,11 @@
+video {
+    margin-bottom: 1rem;
+    --vwwidth: 75vw;
+    width: var(--width);
+    height: calc(var(--vwwidth) * 0.5625);
+}
+
+button {
+    margin: 0 5px 0
+}
+

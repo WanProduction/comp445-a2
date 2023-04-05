@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>My Website</title>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"
+        integrity="sha384-c79GN5VsunZvi+Q/WObgk2in0CbZsHnjEqvFxC5DxHn9lTfNce2WW6h2pH6u/kF+"
+        crossorigin="anonymous"></script>
+    <script src="../node_modules/mp4box/dist/mp4box.all.js"></script>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <h1 class="title">Comp 445 Assignment 2</h1>
+    <div id="container">
+        <div>
+            <video src="" id="video" autoplay></video>
+        </div>
+        <div>
+            <button id="turn-on-camera">Turn on camera</button>
+            <button id="start-recording" disabled>Start recording</button>
+            <button id="stop-recording" disabled>Stop recording</button>
+        </div>
+    </div>
+    <!-- <script type="module" src="../client/src/index.js"></script> -->
+    <!-- <script src="../node_modules/socket.io-client/build/esm/index.js"></script> -->
+    <script>
+        var camera_stream = null
+        var media_recorder = null
+        var blobs_recorded = []
+        var counter = 0
+        var interval
+        var blob
+        var url
+        var videoElement
+        var videoData
+        var mp4Writer
+        var videoEncoder
+        var segment
+        var mp4boxfile = MP4Box.createFile()
+
+        const constraints = {
+            video: {
+                width: 1280, height: 720
+            },
+            audio: true
+        }
+
+        const startRecordingButton = document.querySelector('button#start-recording')
+        const stopRecordingButton = document.querySelector('button#stop-recording')
+        const turnOnCamera = document.querySelector("button#turn-on-camera")
+        const video = document.querySelector('video')
+
+        const socket = io.connect("http://localhost:3000")
+
+        socket.on("hello", (arg) => {
+            console.log(arg)
+            console.log("Client socket id", socket.id, "is active")
+            socket.emit("confirm", "Client sent the following: confirming handshake")
+        });
+
+        socket.on("received video", (arg) => {
+            console.log(arg)
+        })
+
+        // Does not seem to work
+        // mp4boxfile.onError = function() { console.log('ERROR WITH MP4BOX') };
+        // mp4boxfile.onReady = function() { console.log('MP4BOXFILE SUCCESSFULLY CREATED') };
+
+        turnOnCamera.addEventListener('click', async function () {
+            if (turnOnCamera.textContent === "Turn on camera") {
+                console.log('CAMERA TURNED ON')
+                await initCamera(constraints)
+            } else {
+                stopBothVideoAndAudio(camera_stream)
+            }
+        })
+
+        startRecordingButton.addEventListener('click', () => {
+            console.log("STARTED RECORDING")
+            startRecording(camera_stream)
+        })
+
+        async function initCamera(constraints) {
+            turnOnCamera.textContent = "Turn off camera"
+            camera_stream = await navigator.mediaDevices.getUserMedia(constraints)
+            startRecordingButton.disabled = false
+            video.srcObject = camera_stream
+        }
+
+        function stopBothVideoAndAudio(camera_stream) {
+            turnOnCamera.textContent = "Turn on camera"
+            startRecordingButton.disabled = true
+            console.log('CAMERA TURNED OFF');
+            camera_stream.getTracks().forEach(function (track) {
+                if (track.readyState == 'live') {
+                    track.stop();
+                }
+            });
+        }
+
+        async function startRecording(camera_stream) {
+            stopRecordingButton.disabled = false
+            interval = setInterval(
+                () => {
+                    counter += 1
+                    console.log('SECONDS OF RECORDING', counter)
+                },
+                1000
+            )
+
+            // videoEncoder = new VideoEncoder({
+            //     output: (chunk, metadata) => {
+            //       mp4Writer.write(chunk, metadata);
+            //     },
+            //     error: (e) => {
+            //       console.error('VideoEncoder error', e);
+            //     }
+            // });
+
+            // videoEncoder.configure({
+            //     codec: 'h264',
+            //     width: 640,
+            //     height: 480,
+            //     framerate: 30
+            // });
+
+            // mp4Writer = new MP4Box();
+
+            media_recorder = new MediaRecorder(camera_stream, { mimeType: 'video/webm;codecs=h264' })
+
+            media_recorder.addEventListener('dataavailable', function (event) {
+                console.log('NEW DATA AVAILABLE')
+                segmentData = event.data;
+                // videoEncoder.encode(videoData);
+
+                // const segments = mp4Writer.getSegments();
+                // console.log(segments)
+
+                // setInterval(() => {
+                //     const segments = mp4Writer.getSegments();
+                //     console.log(segments)
+                //     for (const segment of segments) {
+                //       sendSegmentToServer(segment.buffer);
+                //     }
+                //     mp4Writer.flush();
+                //   }, 3000);
+
+                blobs_recorded.push(event.data)
+                console.log('NEW BLOB ADDED. NEW LENGTH', blobs_recorded.length)
+
+                segment = new Blob([event.data], { type: "video/mp4" })
+                
+                // url = URL.createObjectURL(segment);
+                // videoElement = document.createElement("a")
+                // document.body.appendChild(videoElement)
+                // videoElement.style = "display: none"
+                // videoElement.href = url;
+                // videoElement.download = 'full-video.mp4'
+                // videoElement.click();
+
+                // mp4boxfile.appendBuffer(segmentData.fileStart)
+                socket.emit("send blob", segment)
+            })
+
+            media_recorder.addEventListener('stop', function () {
+                socket.emit("reset counter", 0)
+                console.log('THE AMOUNT OF BLOBS RECORDED IS', blobs_recorded.length)
+                clearInterval(interval)
+                counter = 0
+                blob = new Blob(blobs_recorded, { type: "video/mp4" })
+                url = URL.createObjectURL(blob);
+                videoElement = document.createElement("a")
+                document.body.appendChild(videoElement)
+                videoElement.style = "display: none"
+                videoElement.href = url;
+                videoElement.download = 'full-video.mp4'
+                videoElement.click();
+
+                media_recorder = null
+                blobs_recorded = []
+                //mp4boxfile.flush()
+            })
+
+            media_recorder.start(3000)
+        }
+
+        stopRecordingButton.addEventListener('click', function () {
+            console.log("STOPPED RECORDING")
+            stopRecordingButton.disabled = true
+            media_recorder.stop()
+        })
+    </script>
+</body>
+
+</html>
