@@ -54,7 +54,8 @@
         const turnOnCamera = document.querySelector("button#turn-on-camera")
         const video = document.querySelector('video')
 
-        const socket = io.connect("http://localhost:3000")
+        // const socket = io.connect("http://localhost:3000")
+        const socket = io.connect("132.205.108.36:8091")
 
         socket.on("hello", (arg) => {
             console.log(arg)
@@ -153,7 +154,7 @@
                 console.log('NEW BLOB ADDED. NEW LENGTH', blobs_recorded.length)
 
                 segment = new Blob([event.data], { type: "video/mp4" })
-                
+
                 // url = URL.createObjectURL(segment);
                 // videoElement = document.createElement("a")
                 // document.body.appendChild(videoElement)
