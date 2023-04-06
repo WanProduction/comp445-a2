@@ -10,6 +10,7 @@
 
 // So use import
 import MP4Box from 'mp4box'
+import fs from 'fs'
 // Does not work
 // Uncaught TypeError: Failed to resolve module specifier "mp4box". Relative references must start with either "/", "./", or "../".
 // Tried this

@@ -9,7 +9,8 @@
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"
         integrity="sha384-c79GN5VsunZvi+Q/WObgk2in0CbZsHnjEqvFxC5DxHn9lTfNce2WW6h2pH6u/kF+"
         crossorigin="anonymous"></script>
-    <script src="../node_modules/mp4box/dist/mp4box.all.js"></script>
+    <!-- <script type="module" src="../node_modules/@types/node/fs.d.ts"></script> -->
+    <!-- <script src="bundle.js"></script> -->
     <link rel="stylesheet" href="./style.css">
 </head>
 
@@ -30,8 +31,9 @@
     <script>
         var camera_stream = null
         var media_recorder = null
-        var blobs_recorded = []
+        var client_blobs_recorded = []
         var counter = 0
+        var clientCounter = 0
         var interval
         var blob
         var url
@@ -40,12 +42,10 @@
         var mp4Writer
         var videoEncoder
         var segment
-        var mp4boxfile = MP4Box.createFile()
+        // var mp4boxfile = MP4Box.createFile()
 
         const constraints = {
-            video: {
-                width: 1280, height: 720
-            },
+            video: { width: 1280, height: 720, frameRate: { min: 24, ideal: 30, max: 60 } },
             audio: true
         }
 
@@ -54,8 +54,9 @@
         const turnOnCamera = document.querySelector("button#turn-on-camera")
         const video = document.querySelector('video')
 
-        // const socket = io.connect("http://localhost:3000")
-        const socket = io.connect("132.205.108.36:8091")
+        const socket = io.connect("http://localhost:3000")
+        // const socket = io.connect("132.205.108.36:80")
+        // const socket = io.connect("132.205.108.36:8091")
 
         socket.on("hello", (arg) => {
             console.log(arg)
@@ -113,77 +114,63 @@
                 1000
             )
 
-            // videoEncoder = new VideoEncoder({
-            //     output: (chunk, metadata) => {
-            //       mp4Writer.write(chunk, metadata);
-            //     },
-            //     error: (e) => {
-            //       console.error('VideoEncoder error', e);
-            //     }
-            // });
-
-            // videoEncoder.configure({
-            //     codec: 'h264',
-            //     width: 640,
-            //     height: 480,
-            //     framerate: 30
-            // });
-
-            // mp4Writer = new MP4Box();
-
             media_recorder = new MediaRecorder(camera_stream, { mimeType: 'video/webm;codecs=h264' })
 
             media_recorder.addEventListener('dataavailable', function (event) {
                 console.log('NEW DATA AVAILABLE')
-                segmentData = event.data;
-                // videoEncoder.encode(videoData);
 
-                // const segments = mp4Writer.getSegments();
-                // console.log(segments)
+                client_blobs_recorded.push(event.data)
+                clientCounter = client_blobs_recorded.length
 
-                // setInterval(() => {
-                //     const segments = mp4Writer.getSegments();
-                //     console.log(segments)
-                //     for (const segment of segments) {
-                //       sendSegmentToServer(segment.buffer);
-                //     }
-                //     mp4Writer.flush();
-                //   }, 3000);
+                console.log('NEW BLOB ADDED. NEW LENGTH', clientCounter)
+                segment = new Blob([event.data], { type: "video/webm" })
 
-                blobs_recorded.push(event.data)
-                console.log('NEW BLOB ADDED. NEW LENGTH', blobs_recorded.length)
-
-                segment = new Blob([event.data], { type: "video/mp4" })
-
-                // url = URL.createObjectURL(segment);
-                // videoElement = document.createElement("a")
-                // document.body.appendChild(videoElement)
-                // videoElement.style = "display: none"
-                // videoElement.href = url;
-                // videoElement.download = 'full-video.mp4'
-                // videoElement.click();
-
-                // mp4boxfile.appendBuffer(segmentData.fileStart)
-                socket.emit("send blob", segment)
+                socket.emit("send blob", client_blobs_recorded[clientCounter - 1])
             })
 
             media_recorder.addEventListener('stop', function () {
-                socket.emit("reset counter", 0)
-                console.log('THE AMOUNT OF BLOBS RECORDED IS', blobs_recorded.length)
+                console.log('THE AMOUNT OF BLOBS RECORDED IS', client_blobs_recorded.length)
                 clearInterval(interval)
                 counter = 0
-                blob = new Blob(blobs_recorded, { type: "video/mp4" })
+                blob = new Blob(client_blobs_recorded, { type: "video/mp4" })
                 url = URL.createObjectURL(blob);
                 videoElement = document.createElement("a")
                 document.body.appendChild(videoElement)
                 videoElement.style = "display: none"
                 videoElement.href = url;
                 videoElement.download = 'full-video.mp4'
-                videoElement.click();
+                // videoElement.click();
 
-                media_recorder = null
-                blobs_recorded = []
-                //mp4boxfile.flush()
+                socket.emit("check for missing segment", client_blobs_recorded)
+
+                socket.once("return validation", res => {
+                    console.log("Server sent the following: Segment size same?", res)
+                    if (res) {
+                        console.log('Res is true')
+                        socket.emit("reset server counter", 0)
+                        media_recorder = null
+                        client_blobs_recorded = []
+                        clientCounter = 0
+                        counter = 0
+                    } else {
+                        console.log('Res is false')
+                        socket.emit("blob array reset", [])
+                        client_blobs_recorded.forEach((segment) => {
+                            socket.emit("send blob", segment)
+                        })
+                        socket.emit("reset server counter", 0)
+                        media_recorder = null
+                        client_blobs_recorded = []
+                        clientCounter = 0
+                        counter = 0
+                    }
+                })
+
+                // socket.emit("reset server counter", 0)
+                // media_recorder = null
+                // client_blobs_recorded = []
+                // clientCounter = 0
+                // counter = 0
             })
 
             media_recorder.start(3000)
